@@ -24,7 +24,7 @@ markerFile = os.path.expanduser("~/fast/resume.txt")
 newSegmentLocation = os.path.expanduser("~/fast/new-sugment/")
 os.chdir(os.path.expanduser("~/fast"))
 
-def ffmpegSegment(args, inputFile, segmentLocation, newSegmentLocation):
+def ffmpegSegment(args, inputFile, segmentLocation):
     print("Segmenting file...")
     segmentArgs = [
         "-c", "copy", 
