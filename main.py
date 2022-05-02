@@ -49,6 +49,7 @@ def ffmpegEncodeSegments(args, encodeArgs, inputFile, segmentLocation, marker):
     markerLocation = readMarker(marker)
     totalSegments = countSegments(segmentLocation)
     for segment in range(markerLocation, totalSegments):
+        writeMarker(marker, segment)
         segmentArgs = args.copy()
         completedPercentage = (segment / totalSegments) * 100
         print("Encoding segment #" + f"{segment:04d}" + " out of " + f"{totalSegments:04d}" + " (" + f"{completedPercentage:.2f}" + "%)")
@@ -73,7 +74,6 @@ def ffmpegEncodeSegments(args, encodeArgs, inputFile, segmentLocation, marker):
             subprocess.run(segmentArgs, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
             exit("ffmpeg call failed while encoding segments")
-        writeMarker(marker, segment + 1)
 
 def ffmpegReconnectSegments(args, inputFile, newSegmentLocation):
     reconnectFileName = newSegmentLocation + "reconnect.ffconcat"
@@ -105,6 +105,7 @@ def writeMarker(marker, segment):
     marker.seek(0)
     marker.truncate()
     marker.write(str(segment))
+    marker.flush()
 
 def readMarker(marker):
     marker.seek(0)
@@ -130,3 +131,4 @@ if __name__ == "__main__":
 
     ffmpegEncodeSegments(args.copy(), encodeArgs.copy(), inputFile, segmentLocation, marker)
     ffmpegReconnectSegments(args.copy(), inputFile, newSegmentLocation)
+    marker.close()
