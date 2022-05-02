@@ -3,6 +3,9 @@ import subprocess
 import sys
 import os
 
+'''
+Spilts a files into segments and encodes those segments seperately using ffmpeg. Can be resumed without redoing the entire encode
+'''
 inputFile = os.path.basename(sys.argv[len(sys.argv) - 1])
 args = ["ffmpeg", "-i", inputFile]
 encodeArgs = [
