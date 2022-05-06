@@ -5,10 +5,15 @@ import os
 '''
 Spilts a files into segments and encodes those segments seperately using ffmpeg. Can be resumed without redoing the entire encode
 '''
+
 inputFile = os.path.basename(sys.argv[len(sys.argv) - 1])
 args = ["ffmpeg", "-i", inputFile]
+
+# Two pass encoding with vp9 or av1 or something
 twoPass = True
+
 if not twoPass:
+    # hevc good compression, slow
     encodeArgs = [
         "-y",
         "-c:v", "hevc",
@@ -21,6 +26,9 @@ if not twoPass:
         "-f", "matroska"
     ]
 else:
+    # vp9 is worse than hevc, would be faster if I could
+    # use more threads
+    # av1 is slower than vp9, i.e. ridiculously slow
     firstEncodeArgs = [
         "-y",
         "-c:v", "libvpx-vp9",
@@ -37,7 +45,8 @@ else:
         "-crf:v", "30",
         "-b:v", "0",
         "-row-mt", "1",
-        "-tiles", "4x4",
+        "-tile-columns", "2",
+        "-tile-rows", "2",
         "-pass", "2",
         "-pix_fmt", "yuv420p10le",
         "-c:a", "libopus", 
@@ -45,12 +54,25 @@ else:
         "-map", "0:a",
         "-f", "webm"
     ]
+# This is where the segmented input file will go
 segmentLocation = os.path.expanduser("~/share/sugment/")
+# This is the file that holds the current segment number
+# When a segment gets done encoding (when the next segment starts encoding),
+# the file gets overwritten
 markerFile = os.path.expanduser("~/share/resume.txt")
+# This is where the encoded segments go
 newSegmentLocation = os.path.expanduser("~/share/new-sugment/")
+# This is the root directory, idk if this is necessary?
 os.chdir(os.path.expanduser("~/share"))
 
 def ffmpegSegment(args, inputFile, segmentLocation):
+    '''
+    Segments the inputfile using ffmpeg's -f segment
+    TODO: This is supposed to separate on keyframes, but
+    it obviously doesn't know what codec is going to be used
+    for encoding so how does it choose the keyframes? or
+    are those codec independent?
+    '''
     print("Segmenting file...")
     segmentArgs = [
         "-c", "copy", 
@@ -71,6 +93,10 @@ def ffmpegSegment(args, inputFile, segmentLocation):
     subprocess.run(args)
 
 def ffmpegEncodeSegments(segment, args, encodeArgs, inputFile, segmentLocation, marker, outputFile=None, outputExtension="mkv"):
+    '''
+    Encodes each segment using the given encode args
+    TODO: could make this more general?
+    '''
     totalSegments = countSegments(segmentLocation)
     writeMarker(marker, segment)
     segmentArgs = args.copy()
@@ -104,14 +130,21 @@ def ffmpegEncodeSegments(segment, args, encodeArgs, inputFile, segmentLocation, 
         exit("ffmpeg call failed while encoding segments")
 
 def ffmpegTwoPassEncodeSegments(segment, args, encodeArgs, inputFile, segmentLocation, marker):
+    '''
+    Do two pass encoding. encodeArgs needs to be a 2 element list of arg lists for each pass
+    '''
     ffmpegEncodeSegments(segment, args.copy(), encodeArgs[0], inputFile, segmentLocation, marker, outputFile="/dev/null")
     ffmpegEncodeSegments(segment, args.copy(), encodeArgs[1], inputFile, segmentLocation, marker, outputExtension="webm")
 
-def ffmpegReconnectSegments(args, inputFile, segmentLocation, newSegmentLocation):
+def ffmpegReconnectSegments(args, inputFile, segmentLocation, newSegmentLocation, outputExtension="mkv", outputFormat="matroska"):
+    '''
+    Reconnects the segments using ffmpeg -f concat. Makes its own .ffconcat file that gets stored
+    in the folder with the encoded segments
+    '''
     reconnectFileName = newSegmentLocation + "reconnect.ffconcat"
     with open(reconnectFileName, "w") as reconnectFile:
         nslList = os.listdir(newSegmentLocation)
-        nslList.sort()
+        nslList.sort() # Every file has the same name except the seg number, this should correctly arrange them
         for file in nslList:
             if file == "reconnect.ffconcat":
                 continue
@@ -121,7 +154,7 @@ def ffmpegReconnectSegments(args, inputFile, segmentLocation, newSegmentLocation
             .replace(" ", "\\ ") # escape space
              + "\n")
     outputFile = inputFile.split(".")
-    outputFile[len(outputFile) - 1] = "mkv"
+    outputFile[len(outputFile) - 1] = outputExtension
     outputFile = '.'.join(outputFile)
     tmpArgs = [
         args[0],
@@ -130,13 +163,14 @@ def ffmpegReconnectSegments(args, inputFile, segmentLocation, newSegmentLocation
         "-i", reconnectFileName,
         "-c", "copy",
         "-fflags", "+genpts",
-        "-f", "matroska",
+        "-f", outputFormat,
         outputFile
     ]
     for file in os.listdir(segmentLocation):
         os.remove(os.path.abspath(segmentLocation + file))
     subprocess.run(tmpArgs)
-    #scary
+    # I'm scared to do this until this is stable and these files get deleted
+    # at the beginning of the next encode anyway
     #for file in os.listdir(newSegmentLocation):
     #    os.remove(os.path.abspath(newSegmentLocation + file))
 
@@ -178,5 +212,8 @@ if __name__ == "__main__":
             ffmpegTwoPassEncodeSegments(segment, args.copy(), encodeArgs, inputFile, segmentLocation, marker)
         else:
             ffmpegEncodeSegments(segment, args.copy(), encodeArgs.copy(), inputFile, segmentLocation, marker)
-    ffmpegReconnectSegments(args.copy(), inputFile, segmentLocation, newSegmentLocation)
+    if twoPass:
+        ffmpegReconnectSegments(args.copy(), inputFile, segmentLocation, newSegmentLocation, outputExtension="webm", outputFormat="webm")
+    else:
+        ffmpegReconnectSegments(args.copy(), inputFile, segmentLocation, newSegmentLocation)
     marker.close()
