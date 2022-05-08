@@ -10,7 +10,7 @@ inputFile = os.path.basename(sys.argv[len(sys.argv) - 1])
 args = ["ffmpeg", "-i", inputFile]
 
 # Two pass encoding with vp9 or av1 or something
-twoPass = True
+twoPass = False
 
 if not twoPass:
     # hevc good compression, slow
@@ -100,9 +100,9 @@ def ffmpegEncodeSegments(segment, args, encodeArgs, inputFile, segmentLocation, 
     totalSegments = countSegments(segmentLocation)
     writeMarker(marker, segment)
     segmentArgs = args.copy()
+    # This isn't a real percentage of the video done. The segments are different sizes. But it's close
     completedPercentage = (segment / totalSegments) * 100
-    if outputFile is not None:
-        print("Encoding segment #" + f"{segment+1:04d}" + " out of " + f"{totalSegments:04d}" + " (" + f"{completedPercentage:.2f}" + "%)")
+    print("Encoding segment #" + f"{segment+1:04d}" + " out of " + f"{totalSegments:04d}" + " (" + f"{completedPercentage:.2f}" + "%)")
     for a in encodeArgs:
         segmentArgs.append(a)
 
